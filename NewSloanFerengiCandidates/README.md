@@ -11,7 +11,7 @@ A small project to build a list of galaxies in the SDSS DR12 data release that w
     1. Were classified as galaxies (`type` = 3).
     2. Have redshifts in the range 0.001 < z < 0.013.
     3. Do not have any warning flags associated with the redshift estimate (`zWarning` = 0)
-5. It verifies that the subset of the original FERENGI sample in the redshift range 0.001 < z < 0.013 is completeley contained within the larger selection from the full DR12 data release. **NOTE:** Doing this reveals that one of the original galxies has a non-zero redshift warning flag (`zWarning` = 0x10, indicating that the fraction of points more than 5 sigma away from best model is too large (> 0.05)).
+5. It verifies that the subset of the original FERENGI sample in the redshift range 0.001 < z < 0.013 is completely contained within the larger selection from the full DR12 data release. **NOTE:** Doing this reveals that one of the original galxies has a non-zero redshift warning flag (`zWarning` = 0x10, indicating that the fraction of points more than 5 sigma away from best model is too large (> 0.05)).
 6. It filters the *full* DR12 dataset to remove any objects that were present in the original FERENGI sample.
 
 ### Results
