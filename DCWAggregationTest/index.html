@@ -2,6 +2,7 @@
 <head>
 
 <style>
+
 .consensus {
   border: 1px solid black;
   border-radius: 5px;
@@ -11,6 +12,17 @@
   background: #E6E6FA;
   font-size: large;
   font-family : sans-serif;
+}
+
+.consensus-text {
+  font-family : sans-serif;
+  font-size: large;
+  line-height: 1.5;
+}
+
+.subject-image-div {
+  float :left;
+  margin-right :50px;
 }
 
 h1 {
@@ -28,11 +40,75 @@ $( document ).ready(function(){
 // This is called when all of the document elements have loaded
 $( window ).on('load', function(){
   //console.log('$( window ).load');
-  var cs = new ClassifiedSubject(3460, document.getElementById('subjectCanvas'));
+  // 3460
+  var cs = new ClassifiedSubject(4421, document.getElementById('subjectCanvas'));
   cs.loadSubjectLines();
+
+  var reliabilityExamples = new ReliabilityExamples(10, 2);
 });
 
-// Test ES6 object model
+class ReliabilityExamples {
+
+  constructor (numReliabilities, numSamples){
+    this.numReliabilities = numReliabilities;
+    this.numSamples = numSamples;
+    this.refresh();
+  }
+
+  refresh(){
+    this.getSubjectJSON(0, 1, this.numReliabilities, this.numSamples);
+  }
+
+  renderForm(){
+
+  }
+
+  render(exampleData){
+    var table = $("<table/>");
+    var heading = $("<tr/>", {
+      'html' : '<th>Reliability Range</th><th>Examples</th>'
+    }).appendTo(table);
+
+    for (var reliabilityData of exampleData){
+      var row = $("<tr/>").appendTo(table);
+      var reliabilityCell = $("<td/>", {
+        'html' : reliabilityData['minReliability'].toPrecision(2).toString() + " - " + reliabilityData['maxReliability'].toPrecision(2).toString()
+      }).appendTo(row);
+
+      var exampleIds = [];
+      for (var reliabilityDatum of reliabilityData['exampleData']){
+        exampleIds.push(reliabilityDatum['huntingtonId'] + ' (' + reliabilityDatum['subjectReliability'] + '; ' + reliabilityDatum['id'] + ')');
+      }
+
+      var exampleCell = $("<td/>", {
+        'html' : exampleIds.join(', ')
+      }).appendTo(row);
+    }
+    $('#reliabilityExampleDiv').append(table);
+  }
+
+  getSubjectJSON(minReliability, maxReliability, numSteps, numSamples){
+    $.ajax({
+      url: "serveConsensus.php",
+
+      data: {
+        'task' : 'getSampleForReliability',
+        'minReliability' : minReliability,
+        'maxReliability' : maxReliability,
+        'numSamples' : numSamples,
+        'numSteps' : numSteps
+      },
+
+      type: "GET",
+
+      dataType : "json",
+
+      context : this
+
+    }).done(this.render);
+  }
+}
+
 class ClassifiedBox {
     constructor (x, y, width, height, numBoxesMarked, boxLineStats, telegramData, fullRenderCallback) {
         this.colour = '#0000FF';
@@ -172,6 +248,7 @@ function ClassifiedLine(bestIndex, x1, y1, x2, y2, words, lineReliability, fullR
   this.hover = false;
   this.canvas = null;
   this.canvasContext = null;
+  this.renderedTextSpan = null;
 }
 
 ClassifiedLine.prototype = {
@@ -229,11 +306,13 @@ ClassifiedLine.prototype = {
     if(!this.hover && mouseIsOver){
       this.hover = true;
       this.colour = '#FF0000';
+      this.renderedTextSpan.css( { 'color' : this.colour });
       this.fullRenderCallback();
     }
     else if(this.hover && !mouseIsOver){
       this.hover = false;
       this.colour = '#000000';
+      this.renderedTextSpan.css( { 'color' : this.colour });
       this.fullRenderCallback();
     }
   },
@@ -326,6 +405,7 @@ function ClassifiedSubject(id, renderCanvas){
   this.renderCanvas = renderCanvas;
   this.renderCanvasContext = null;
   this.subjectScaling = 0.5;
+  this.transcriptionArea = null;
 
 }
 
@@ -338,6 +418,7 @@ ClassifiedSubject.prototype = {
       url: "serveConsensus.php",
 
       data: {
+        task : 'getSubjectData',
         id: this.subjectId
       },
 
@@ -391,6 +472,26 @@ ClassifiedSubject.prototype = {
     }
   },
 
+  printConsensusLines : function(){
+    if(this.transcriptionArea == null){
+      this.transcriptionArea = $("#transcriptionDiv");
+    }
+    var transcriptionParagraph = $('<p/>');
+    for(line of this.subjectLines){
+      var transcriptionLineText = '';
+      for (wordOptions of line['words']){
+        transcriptionLineText += wordOptions[0] + ' ';
+      }
+      transcriptionLineText += '<br/>'
+      line.renderedTextSpan = $('<span/>', {
+        'html' : transcriptionLineText
+      });
+      transcriptionParagraph.addClass('consensus-text');
+      line.renderedTextSpan.appendTo(transcriptionParagraph);
+    }
+    transcriptionParagraph.appendTo(this.transcriptionArea);
+  },
+
   renderConsensusBoxes : function(){
     for(box of this.subjectBoxes){
       //var line = this.subjectLines[0];
@@ -408,6 +509,7 @@ ClassifiedSubject.prototype = {
     this.renderCanvasContext.drawImage(this.subjectImage, 0, 0, this.subjectScaling*this.subjectImage.naturalWidth, this.subjectScaling*this.subjectImage.naturalHeight);
     this.renderConsensusLines();
     this.renderConsensusBoxes();
+    $("#contentDiv").width(this.subjectScaling*this.subjectImage.naturalWidth);
   },
 
   renderSubjectHeader : function(){
@@ -425,6 +527,7 @@ ClassifiedSubject.prototype = {
     this.subjectImage = new Image();
     this.subjectImage .onload = this.renderSubjectImage.bind(this);
     this.subjectImage .src = this.subjectImageUrl;
+    this.printConsensusLines();
   }
 
 };
@@ -434,10 +537,18 @@ ClassifiedSubject.prototype = {
 </head>
 <body>
   <div id='outerContentDiv'>
-    <div id='contentDiv' style='border:1px solid black'>
+    <div id='contentDiv' class='subject-image-div' style='border:1px solid black'>
       <canvas id='subjectCanvas'>
       </canvas>
     </div>
+    <div id='transcriptionDiv'>
+      <h1>Full Transcription</h1>
+    </div>
+  </div>
+  <div id='reliabilityExampleDiv' style='clear:both' class='consensus-text'>
+<h1>Reliability examples</h1>
+
+</h1>
   </div>
 </body>
 </html>
