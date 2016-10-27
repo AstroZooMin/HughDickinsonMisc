@@ -344,7 +344,7 @@ class ReliabilitySamplePrinter{
 }
 
 // INITIAL DATABASE CONNECTION
-$database = new mysqli('localhost', 'root', '!Ocus1!Ocus1', 'dcwConsensus');
+$database = new mysqli('localhost', 'REDACTED', 'REDACTED', 'dcwConsensus');
 
 if($database->connect_errno > 0){
   die('Unable to connect to database [' . $database->connect_error . ']');
