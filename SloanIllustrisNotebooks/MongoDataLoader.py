@@ -11,7 +11,8 @@ class MongoDataHandler():
                  collectionNames = {'classifications' : 'galaxy_zoo_classifications',
                                     'subjects' : 'galaxy_zoo_subjects',
                                     'groups' : 'galaxy_zoo_groups'},
-                 outputBaseDir = ''
+                 outputBaseDir = '',
+                 pFeaturesThreshold = 0.6
                 ):
 
         self.dbName = dbName
@@ -39,6 +40,10 @@ class MongoDataHandler():
         self.illustrisCombinedDataFileName = 'galaxyZoo_illustrisCombinedData.pkl'
 
         self.clientInstance = self.database = self.collections = None
+        
+        # threshold for the features vote fraction that determines whether a galaxy exhibits "features"
+        self.pFeaturesThreshold = pFeaturesThreshold
+        
         self.__initDatabase()
 
     def __initDatabase(self) :
@@ -96,10 +101,19 @@ class MongoDataHandler():
             # add computed vote fraction values
             self.illustrisClassificationData['p_smooth'] = self.illustrisClassificationData['num_smooth']/(self.illustrisClassificationData['num_smooth'] + self.illustrisClassificationData['num_features'])
             self.illustrisClassificationData['p_features'] = self.illustrisClassificationData['num_features']/(self.illustrisClassificationData['num_smooth'] + self.illustrisClassificationData['num_features'])
+            
+            # add computed column for fractions of "features plus artifacts" and "smooth plus artifacts" (both include artifacts in the denominator)
+            self.illustrisClassificationData['p_smooth_plus_artifact'] = (self.illustrisClassificationData['num_smooth'] + self.illustrisClassificationData['num_artifact'])/(self.illustrisClassificationData['num_smooth'] + self.illustrisClassificationData['num_features'] + self.illustrisClassificationData['num_artifact'])
+            self.illustrisClassificationData['p_features_plus_artifact'] = (self.illustrisClassificationData['num_features'] + self.illustrisClassificationData['num_artifact'])/(self.illustrisClassificationData['num_smooth'] + self.illustrisClassificationData['num_features'] + self.illustrisClassificationData['num_artifact'])
+            
+            # add computed columns for an alternative vote fraction, for which the denominator includes the count of artifacts
+            self.illustrisClassificationData['p_artifact'] = self.illustrisClassificationData['num_artifact']/(self.illustrisClassificationData['num_smooth'] + self.illustrisClassificationData['num_features'] + self.illustrisClassificationData['num_artifact'])
+            self.illustrisClassificationData['p_smooth_with_artifact_in_denominator'] = self.illustrisClassificationData['num_smooth']/(self.illustrisClassificationData['num_smooth'] + self.illustrisClassificationData['num_features'] + self.illustrisClassificationData['num_artifact'])
+            self.illustrisClassificationData['p_features_with_artifact_in_denominator'] = self.illustrisClassificationData['num_features']/(self.illustrisClassificationData['num_smooth'] + self.illustrisClassificationData['num_features'] + self.illustrisClassificationData['num_artifact'])
+            
             # Add computed columns for "edge on" versus "not edge on"
-            pFeaturesThreshold = 0.6
             self.illustrisClassificationData['is_edge_on'] = np.logical_and(self.illustrisClassificationData['num_edgeon'] >= self.illustrisClassificationData['num_faceon'], self.illustrisClassificationData['num_edgeon'] !=0)
-            self.illustrisClassificationData['is_features_and_edge_on'] = np.logical_and(self.illustrisClassificationData['is_edge_on'], self.illustrisClassificationData['p_features'] > pFeaturesThreshold)
+            self.illustrisClassificationData['is_features_and_edge_on'] = np.logical_and(self.illustrisClassificationData['is_edge_on'], self.illustrisClassificationData['p_features'] > self.pFeaturesThreshold)
 
     def __tabulateIllustrisClassificationData(self, reload = False) :
         if reload or self.illustrisClassificationData is None :
