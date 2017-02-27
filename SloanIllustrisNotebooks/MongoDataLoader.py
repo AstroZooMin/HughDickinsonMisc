@@ -3,6 +3,10 @@ from bson.son import SON
 import pandas as pd
 import numpy as np
 import pickle
+import matplotlib
+import matplotlib.sankey
+import re
+
 
 class MongoDataHandler():
 
@@ -13,7 +17,7 @@ class MongoDataHandler():
                                     'groups' : 'galaxy_zoo_groups'},
                  outputBaseDir = '',
                  pFeaturesThreshold = 0.6
-                ):
+                 ):
 
         self.dbName = dbName
         self.collectionNames = collectionNames
@@ -55,16 +59,16 @@ class MongoDataHandler():
                             'groups' : self.database[self.collectionNames['groups']]}
 
     def __retrieveUserData(self, reload = False) :
-        if reload == True or self.rawUserData is None :
-            print ('Retrieving user data...')
+        if reload is True or self.rawUserData is None :
+            print('Retrieving user data...')
             self.rawUserData = list(self.collections['classifications'].aggregate([ {"$sort" : {"user_name" : 1} }, {"$group": { "_id" : "$user_name", "count" : {"$sum" : 1 } } }]))
-            print ('Done.')
+            print('Done.')
 
     def __tabulateUserData(self, reload = False) :
         if reload or self.userData is None :
             # The following is a no-op if self.rawUserData is not None and reload is False
             self.__retrieveUserData(reload)
-            print ('Tabulating user data...')
+            print('Tabulating user data...')
             self.userData = pd.DataFrame.from_dict({'user_name' : [userData['_id'] for userData in self.rawUserData], 'classification_count' : [userData['count'] for userData in self.rawUserData]})
             self.userData = self.userData.set_index("user_name")
             print('Done.')
@@ -112,23 +116,22 @@ class MongoDataHandler():
             self.illustrisClassificationData['p_features_with_artifact_in_denominator'] = self.illustrisClassificationData['num_features']/(self.illustrisClassificationData['num_smooth'] + self.illustrisClassificationData['num_features'] + self.illustrisClassificationData['num_artifact'])
 
             # Add computed columns for "edge on" versus "not edge on"
-            self.illustrisClassificationData['is_edge_on'] = np.logical_and(self.illustrisClassificationData['num_edgeon'] >= self.illustrisClassificationData['num_faceon'], self.illustrisClassificationData['num_edgeon'] !=0)
+            self.illustrisClassificationData['is_edge_on'] = np.logical_and(self.illustrisClassificationData['num_edgeon'] >= self.illustrisClassificationData['num_faceon'], self.illustrisClassificationData['num_edgeon'] != 0)
             self.illustrisClassificationData['is_features_and_edge_on'] = np.logical_and(self.illustrisClassificationData['is_edge_on'], self.illustrisClassificationData['p_features'] > self.pFeaturesThreshold)
 
     def __tabulateIllustrisClassificationData(self, reload = False) :
         if reload or self.illustrisClassificationData is None :
             # The following is a no-op if self.rawIllustrisData is not None and reload is False
             self.__retrieveIllustrisData(reload)
-            print ('Tabulating Illustris classification data...')
+            print('Tabulating Illustris classification data...')
             self.illustrisClassificationData = pd.DataFrame([(key,
-                                                         value['illustris-0']['a-0'] if 'a-0' in value['illustris-0'] else 0,
-                                                         value['illustris-0']['a-1'] if 'a-1' in value['illustris-0'] else 0,
-                                                         value['illustris-0']['a-2'] if 'a-2' in value['illustris-0'] else 0,
-                                                         value['illustris-1']['a-0'] if ('illustris-1' in value and 'a-0' in value['illustris-1']) else 0,
-                                                         value['illustris-1']['a-1'] if ('illustris-1' in value and 'a-1' in value['illustris-1']) else 0
-                                                        )
-                                                        for key, value in self.__collateIllustrisClassificationData().items()],
-                                                       columns=['subhalo_id', 'num_smooth', 'num_features', 'num_artifact', 'num_edgeon', 'num_faceon'])
+                                                              value['illustris-0']['a-0'] if 'a-0' in value['illustris-0'] else 0,
+                                                              value['illustris-0']['a-1'] if 'a-1' in value['illustris-0'] else 0,
+                                                              value['illustris-0']['a-2'] if 'a-2' in value['illustris-0'] else 0,
+                                                              value['illustris-1']['a-0'] if ('illustris-1' in value and 'a-0' in value['illustris-1']) else 0,
+                                                              value['illustris-1']['a-1'] if ('illustris-1' in value and 'a-1' in value['illustris-1']) else 0)
+                                                             for key, value in self.__collateIllustrisClassificationData().items()],
+                                                            columns=['subhalo_id', 'num_smooth', 'num_features', 'num_artifact', 'num_edgeon', 'num_faceon'])
             self.illustrisClassificationData = self.illustrisClassificationData.set_index('subhalo_id')
             self.illustrisClassificationData = self.illustrisClassificationData.sort_index()
             self.__appendComputedIllustrisColumns()
@@ -138,65 +141,65 @@ class MongoDataHandler():
         if reload or self.illustrisMetaData is None :
             # The following is a no-op if self.rawIllustrisClassificationData is not None and reload is False
             self.__retrieveIllustrisData(reload)
-            print ('Tabulating Illustris metadata...')
-            self.illustrisMetaData = pd.DataFrame([ (
-                        found["metadata"]["subhalo_id"],
-                        found["metadata"]["priority"],
-                        found["metadata"]["mass_log_msun"],
-                        np.log10(found["metadata"]["radius_half"]),
-                        np.log10(found["metadata"]["sfr"]) if found["metadata"]["sfr"] != 0 else 0.0,
-                        float(found["metadata"]["mag"]["absmag_r"]),
-                        float(found["metadata"]["mag"]["absmag_b"]),
-                        float(found["metadata"]["mag"]["absmag_g"]),
-                        float(found["metadata"]["mag"]["absmag_i"]),
-                        float(found["metadata"]["mag"]["absmag_k"]),
-                        float(found["metadata"]["mag"]["absmag_u"]),
-                        float(found["metadata"]["mag"]["absmag_v"]),
-                        float(found["metadata"]["mag"]["absmag_z"]),
-                        found["metadata"]["provided_image_id"]
-                    ) for found in self.rawIllustrisData],
-                                                  columns=["subhalo_id",
-                                                           "priority",
-                                                           "mass_log_msun",
-                                                           "log_radius_half",
-                                                           "log_sfr",
-                                                           "absmag_r",
-                                                           "absmag_b",
-                                                           "absmag_g",
-                                                           "absmag_i",
-                                                           "absmag_k",
-                                                           "absmag_u",
-                                                           "absmag_v",
-                                                           "absmag_z",
-                                                           "image_basename"]
-                                                 )
+            print('Tabulating Illustris metadata...')
+            self.illustrisMetaData = pd.DataFrame([
+                (
+                    found["metadata"]["subhalo_id"],
+                    found["metadata"]["priority"],
+                    found["metadata"]["mass_log_msun"],
+                    np.log10(found["metadata"]["radius_half"]),
+                    np.log10(found["metadata"]["sfr"]) if found["metadata"]["sfr"] != 0 else 0.0,
+                    float(found["metadata"]["mag"]["absmag_r"]),
+                    float(found["metadata"]["mag"]["absmag_b"]),
+                    float(found["metadata"]["mag"]["absmag_g"]),
+                    float(found["metadata"]["mag"]["absmag_i"]),
+                    float(found["metadata"]["mag"]["absmag_k"]),
+                    float(found["metadata"]["mag"]["absmag_u"]),
+                    float(found["metadata"]["mag"]["absmag_v"]),
+                    float(found["metadata"]["mag"]["absmag_z"]),
+                    found["metadata"]["provided_image_id"]
+                ) for found in self.rawIllustrisData], columns=["subhalo_id",
+                                                                "priority",
+                                                                "mass_log_msun",
+                                                                "log_radius_half",
+                                                                "log_sfr",
+                                                                "absmag_r",
+                                                                "absmag_b",
+                                                                "absmag_g",
+                                                                "absmag_i",
+                                                                "absmag_k",
+                                                                "absmag_u",
+                                                                "absmag_v",
+                                                                "absmag_z",
+                                                                "image_basename"])
             # index the metadata according to halo id
             self.illustrisMetaData = self.illustrisMetaData.set_index("subhalo_id")
-            print ('Done.')
+            print('Done.')
 
     def __retrieveIllustrisData(self, reload=False) :
         # check whether the data have already been loaded - the query is reasonably time consuming
         if reload or self.rawIllustrisData is None :
-            print ('Retrieving Illustris data...')
+            print('Retrieving Illustris data...')
             self.illustrisClassificationData = None
             # Assemble query/aggregation pipleine
             galaxyPropertiesIllustrisPipeline = [{"$match" :
-                                              {"$and" : [ {"metadata.survey" : "illustris"},
-                                                         {"state" : "complete"}
-                                                        ] }
-                                             },
-                                             {"$lookup" : {"from" : "galaxy_zoo_classifications",
-                                                           "localField" : "_id",
-                                                           "foreignField" : "subject_ids",
-                                                           "as": "classifications" }
-                                             },
-                                             {"$project" : {"classifications.annotations": 1,
-                                                            "zooniverse_id" : 1,
-                                                            "classification_count" : 1,
-                                                            "metadata" : 1,
-                                                            "classifications.user_name" : 1 }
-                                                          }
-                                            ]
+                                                  {"$and" :
+                                                   [{"metadata.survey" : "illustris"},
+                                                    {"state" : "complete"}]
+                                                   }
+                                                  },
+                                                 {"$lookup" : {"from" : "galaxy_zoo_classifications",
+                                                               "localField" : "_id",
+                                                               "foreignField" : "subject_ids",
+                                                               "as": "classifications" }
+                                                  },
+                                                 {"$project" : {"classifications.annotations": 1,
+                                                                "zooniverse_id" : 1,
+                                                                "classification_count" : 1,
+                                                                "metadata" : 1,
+                                                                "classifications.user_name" : 1 }
+                                                  }
+                                                 ]
             # Execute the query and store the result immediately
             self.rawIllustrisData = list(self.collections['subjects'].aggregate(galaxyPropertiesIllustrisPipeline, allowDiskUse=True, batchSize=1000))
             print('Done.')
@@ -214,7 +217,7 @@ class MongoDataHandler():
 
     def getSurveyNames(self) :
         if self.surveyNames is None :
-            self.surveyNames = pd.DataFrame([found for found in self.collections['groups'].find({},{"name": 1, "_id": 0})])
+            self.surveyNames = pd.DataFrame([found for found in self.collections['groups'].find({}, {"name": 1, "_id": 0})])
 
         return self.surveyNames
 
@@ -222,6 +225,10 @@ class MongoDataHandler():
         self.__tabulateIllustrisClassificationData(reload)
 
         return self.illustrisClassificationData
+
+    def getRawIllustrisClassificationData(self, reload = False) :
+        self.__retrieveIllustrisData(reload)
+        return self.__collateIllustrisClassificationData()
 
     def getIllustrisMetaData(self, reload=False) :
         self.__tabulateIllustrisMetaData(reload)
@@ -240,7 +247,7 @@ class MongoDataHandler():
         if hasattr(userFilter, "__call__") :
             self.userFilter = userFilter
         else :
-            print ('Warning! Supplied filter cannot be called. User filter will not be applied.')
+            print('Warning! Supplied filter cannot be called. User filter will not be applied.')
 
     def saveIllustrisMetaData(self) :
         self.illustrisMetaData.to_pickle(self.outputBaseDir + self.illustrisMetaDataFileName)
@@ -292,3 +299,26 @@ class MongoDataHandler():
 
     def setOutputBaseDir(self, outputBaseDir) :
         self.outputBaseDir = outputBaseDir
+
+    def genSankeyMaticInput(self, reload = False):
+        '''Format looks like:
+        SOURCE [AMOUNT] TARGET
+        '''
+        self.__retrieveIllustrisData(reload)
+        classificationData = self.__collateIllustrisClassificationData()
+        answercounts = {}
+        for subject, questions in classificationData.items() :
+                for question, answers in questions.items():
+                    for answer, count in answers.items() :
+                        answer = re.findall(r'a-[0-9]+', answer)[0] if '[' in answer else answer
+                        if question in answercounts :
+                            if answer in answercounts[question] :
+                                answercounts[question][answer] += count
+                            else :
+                                answercounts[question].update({answer : count})
+                        else :
+                            answercounts.update({question : {answer : count}})
+
+        for question in sorted(answercounts.keys(), key=lambda question : int(question.split('-')[1])) :
+            for answer in answercounts[question] :
+                print('{} [{}] {}'.format(question, answercounts[question][answer], answer))
